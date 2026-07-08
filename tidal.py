@@ -1,11 +1,7 @@
-from datetime import date, datetime
+from datetime import date
 
-import matplotlib.colors as mcolors
-import matplotlib.dates as mdates
-import numpy as np
 import polars as pl
 import requests
-import spaceplot as sp
 from astral import LocationInfo, moon
 from astral.sun import sun
 
