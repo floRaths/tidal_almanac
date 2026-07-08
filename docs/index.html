@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#16191e">
+    <title>Tidal Almanac</title>
+    <style>
+      html,
+      body {
+        background: #16191e;
+        color: #e8ebef;
+      }
+    </style>
+    <link rel="stylesheet" href="styles.css?v=dark-20260708">
+  </head>
+  <body>
+    <main class="app">
+      <header class="masthead">
+        <div>
+          <p class="eyebrow" id="stationLabel">Santa Monica</p>
+          <h1>Tidal Almanac</h1>
+        </div>
+        <div class="meta">
+          <span id="yearLabel">2026</span>
+          <span id="eventLabel">Sunset</span>
+        </div>
+      </header>
+
+      <section class="controls" aria-label="Calendar controls">
+        <label class="field">
+          <span>Month</span>
+          <select id="monthSelect" name="month"></select>
+        </label>
+
+        <div class="field">
+          <span>Event</span>
+          <div class="segmented" id="daytimeControl" role="radiogroup" aria-label="Solar event">
+            <button type="button" data-daytime="sunset" role="radio" aria-checked="true">Sunset</button>
+            <button type="button" data-daytime="sunrise" role="radio" aria-checked="false">Sunrise</button>
+          </div>
+        </div>
+
+        <div class="stat">
+          <span>Mean tide</span>
+          <strong id="meanHeight">--</strong>
+        </div>
+
+        <div class="stat">
+          <span>Range</span>
+          <strong id="ampRange">--</strong>
+        </div>
+      </section>
+
+      <section class="chart-panel" aria-labelledby="chartTitle">
+        <div class="chart-heading">
+          <div>
+            <h2 id="chartTitle">January at sunset</h2>
+            <p id="chartSubhead">Normalized tide amplitude nearest sunset</p>
+          </div>
+          <div class="legend" aria-label="Amplitude color scale">
+            <span>Low</span>
+            <span class="legend-bar" aria-hidden="true"></span>
+            <span>High</span>
+          </div>
+        </div>
+
+        <div class="chart-frame">
+          <div id="chart" aria-live="polite"></div>
+        </div>
+      </section>
+    </main>
+
+    <script src="main.js?v=dark-20260708"></script>
+  </body>
+</html>

@@ -1,0 +1,240 @@
+const DATA_URL = "data/tides-2026.json";
+const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
+const MONTHS = [
+  "January",
+  "February",
+  "March",
+  "April",
+  "May",
+  "June",
+  "July",
+  "August",
+  "September",
+  "October",
+  "November",
+  "December",
+];
+
+const state = {
+  data: null,
+  month: 1,
+  daytime: "sunset",
+};
+
+const els = {
+  monthSelect: document.querySelector("#monthSelect"),
+  daytimeControl: document.querySelector("#daytimeControl"),
+  chart: document.querySelector("#chart"),
+  chartTitle: document.querySelector("#chartTitle"),
+  chartSubhead: document.querySelector("#chartSubhead"),
+  stationLabel: document.querySelector("#stationLabel"),
+  yearLabel: document.querySelector("#yearLabel"),
+  eventLabel: document.querySelector("#eventLabel"),
+  meanHeight: document.querySelector("#meanHeight"),
+  ampRange: document.querySelector("#ampRange"),
+};
+
+init();
+
+async function init() {
+  try {
+    const response = await fetch(DATA_URL);
+    if (!response.ok) {
+      throw new Error(`Could not load ${DATA_URL}`);
+    }
+
+    state.data = await response.json();
+    state.month = defaultMonth(state.data.year);
+
+    setupControls();
+    render();
+  } catch (error) {
+    els.chart.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+  }
+}
+
+function defaultMonth(year) {
+  const now = new Date();
+  return now.getFullYear() === year ? now.getMonth() + 1 : 1;
+}
+
+function setupControls() {
+  els.monthSelect.innerHTML = MONTHS.map((name, index) => {
+    const month = index + 1;
+    return `<option value="${month}">${name}</option>`;
+  }).join("");
+  els.monthSelect.value = String(state.month);
+
+  els.monthSelect.addEventListener("change", (event) => {
+    state.month = Number(event.target.value);
+    render();
+  });
+
+  els.daytimeControl.addEventListener("click", (event) => {
+    const button = event.target.closest("button[data-daytime]");
+    if (!button) return;
+
+    state.daytime = button.dataset.daytime;
+    for (const option of els.daytimeControl.querySelectorAll("button")) {
+      option.setAttribute("aria-checked", String(option === button));
+    }
+    render();
+  });
+}
+
+function render() {
+  const records = recordsForSelection();
+  const monthName = MONTHS[state.month - 1];
+  const eventName = titleCase(state.daytime);
+
+  els.stationLabel.textContent = state.data.station.name;
+  els.yearLabel.textContent = state.data.year;
+  els.eventLabel.textContent = eventName;
+  els.chartTitle.textContent = `${monthName} at ${state.daytime}`;
+  els.chartSubhead.textContent = `${state.data.station.name} tide nearest ${state.daytime}`;
+
+  renderStats(records);
+  renderSvg(records, monthName, eventName);
+}
+
+function recordsForSelection() {
+  return state.data.records
+    .filter((record) => record.month === state.month && record.daytime === state.daytime)
+    .sort((a, b) => a.day - b.day);
+}
+
+function renderStats(records) {
+  if (records.length === 0) {
+    els.meanHeight.textContent = "--";
+    els.ampRange.textContent = "--";
+    return;
+  }
+
+  const heights = records.map((record) => record.height_m);
+  const amps = records.map((record) => record.normalized_amplitude);
+  const meanHeight = heights.reduce((sum, value) => sum + value, 0) / heights.length;
+
+  els.meanHeight.textContent = `${meanHeight.toFixed(2)} m`;
+  els.ampRange.textContent = `${Math.min(...amps).toFixed(2)} to ${Math.max(...amps).toFixed(2)}`;
+}
+
+function renderSvg(records, monthName, eventName) {
+  if (records.length === 0) {
+    els.chart.innerHTML = '<p class="empty-state">No data for this selection.</p>';
+    return;
+  }
+
+  const width = 980;
+  const margin = { top: 86, right: 44, bottom: 78, left: 74 };
+  const weeks = [...new Set(records.map((record) => record.week))].sort((a, b) => a - b);
+  const rowHeight = 76;
+  const plotWidth = width - margin.left - margin.right;
+  const plotHeight = weeks.length * rowHeight;
+  const height = margin.top + plotHeight + margin.bottom;
+  const colWidth = plotWidth / 7;
+
+  const weekIndex = new Map(weeks.map((week, index) => [week, index]));
+  const gridLines = [];
+  const dots = [];
+
+  for (let i = 0; i <= 7; i += 1) {
+    const x = margin.left + i * colWidth;
+    gridLines.push(svgLine(x, margin.top, x, margin.top + plotHeight, "grid-line"));
+  }
+
+  for (let i = 0; i <= weeks.length; i += 1) {
+    const y = margin.top + i * rowHeight;
+    gridLines.push(svgLine(margin.left, y, margin.left + plotWidth, y, "grid-line"));
+  }
+
+  for (const record of records) {
+    const x = margin.left + (record.weekday - 1) * colWidth + colWidth / 2;
+    const row = weekIndex.get(record.week);
+    const y = margin.top + row * rowHeight + rowHeight / 2;
+    const amp = record.normalized_amplitude;
+    const radius = 5 + Math.abs(amp) * 22;
+    const tideTime = formatTime(record.tide_time);
+    const sunTime = formatTime(record.sun_time);
+    const title = [
+      `${record.weekday_name}, ${monthName} ${record.day}`,
+      `${eventName}: ${sunTime}`,
+      `Tide: ${tideTime}, ${record.height_m.toFixed(2)} m`,
+      `Amplitude: ${amp.toFixed(2)}`,
+      record.moon_phase_name,
+    ].join(" | ");
+
+    dots.push(`
+      <g>
+        <circle class="tide-dot" cx="${x.toFixed(2)}" cy="${(y - 9).toFixed(2)}" r="${radius.toFixed(2)}" fill="${colorForAmplitude(amp)}">
+          <title>${escapeHtml(title)}</title>
+        </circle>
+        <text class="day-label" x="${x.toFixed(2)}" y="${(y + 26).toFixed(2)}" text-anchor="middle">${record.day}</text>
+      </g>
+    `);
+  }
+
+  const weekdayLabels = WEEKDAYS.map((label, index) => {
+    const x = margin.left + index * colWidth + colWidth / 2;
+    return `<text class="axis-label" x="${x.toFixed(2)}" y="${height - 32}" text-anchor="middle">${label}</text>`;
+  }).join("");
+
+  const weekLabels = weeks.map((week, index) => {
+    const y = margin.top + index * rowHeight + rowHeight / 2 + 5;
+    return `<text class="week-label" x="${margin.left - 22}" y="${y.toFixed(2)}" text-anchor="end">${week}</text>`;
+  }).join("");
+
+  els.chart.innerHTML = `
+    <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="svgTitle svgDesc">
+      <title id="svgTitle">${monthName} ${state.data.year} ${state.daytime} tide calendar</title>
+      <desc id="svgDesc">Calendar grid with one circle per day. Circle size and color encode normalized tide amplitude nearest ${state.daytime}.</desc>
+      <text class="month-title" x="${margin.left}" y="46">${monthName}</text>
+      <text class="axis-label" x="${margin.left}" y="70">${eventName} tide amplitude</text>
+      ${gridLines.join("")}
+      <rect class="plot-border" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}"></rect>
+      ${weekLabels}
+      ${dots.join("")}
+      ${weekdayLabels}
+    </svg>
+  `;
+}
+
+function svgLine(x1, y1, x2, y2, className) {
+  return `<line class="${className}" x1="${x1.toFixed(2)}" y1="${y1.toFixed(2)}" x2="${x2.toFixed(2)}" y2="${y2.toFixed(2)}"></line>`;
+}
+
+function colorForAmplitude(value) {
+  const low = [123, 215, 238];
+  const mid = [107, 92, 149];
+  const high = [243, 182, 95];
+
+  if (value < 0) {
+    return rgb(interpolate(low, mid, value + 1));
+  }
+
+  return rgb(interpolate(mid, high, value));
+}
+
+function interpolate(start, end, amount) {
+  return start.map((value, index) => Math.round(value + (end[index] - value) * amount));
+}
+
+function rgb(parts) {
+  return `rgb(${parts[0]}, ${parts[1]}, ${parts[2]})`;
+}
+
+function formatTime(value) {
+  return value.slice(11, 16);
+}
+
+function titleCase(value) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
