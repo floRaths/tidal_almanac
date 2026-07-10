@@ -124,7 +124,7 @@ function renderSvg(records, monthName, eventName) {
     return;
   }
 
-  const width = 980;
+  const width = 740;
   const margin = { top: 86, right: 44, bottom: 78, left: 74 };
   const weeks = [...new Set(records.map((record) => record.week))].sort((a, b) => a - b);
   const rowHeight = 76;

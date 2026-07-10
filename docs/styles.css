@@ -212,7 +212,7 @@ select:focus-visible {
 }
 
 #chart {
-  min-width: 720px;
+  min-width: 0px;
 }
 
 .calendar-svg {
