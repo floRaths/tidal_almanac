@@ -5,6 +5,13 @@ import requests
 from astral import LocationInfo, moon
 from astral.sun import sun
 
+from stations import DEFAULT_STATION
+
+
+class NOAAError(RuntimeError):
+    """An unavailable or invalid NOAA response."""
+
+
 url = 'https://api.tidesandcurrents.noaa.gov/api/prod/datagetter'
 base_params = {
     'station': '9410840',  # Santa Monica
@@ -23,10 +30,11 @@ city = LocationInfo(
 )
 
 
-def noaa_tides(begin='20260624', end='20260626', interval='6', time_zone='lst_ldt'):
+def noaa_tides(begin='20260624', end='20260626', interval='6', time_zone='lst_ldt', station=DEFAULT_STATION):
 
     params = {
         **base_params,
+        'station': station,
         'product': 'predictions',
         'begin_date': begin,
         'end_date': end,
@@ -34,16 +42,28 @@ def noaa_tides(begin='20260624', end='20260626', interval='6', time_zone='lst_ld
         'time_zone': time_zone,
     }
 
-    r = requests.get(url, params=params)
-    r.raise_for_status()
-    js = r.json()
-
-    df = pl.DataFrame(js['predictions'])
-    df = df.with_columns(pl.col('t').str.to_datetime('%Y-%m-%d %H:%M')).cast({'v': pl.Float64})
+    try:
+        r = requests.get(url, params=params, timeout=(10, 90))
+        r.raise_for_status()
+        js = r.json()
+        if js.get('error'):
+            raise NOAAError(js['error'].get('message', 'NOAA could not provide predictions.'))
+        if not js.get('predictions'):
+            raise NOAAError('NOAA returned no predictions for this station and year.')
+        df = pl.DataFrame(js['predictions'])
+        df = df.with_columns(pl.col('t').str.to_datetime('%Y-%m-%d %H:%M')).cast({'v': pl.Float64})
+        if df['v'].null_count() or not df['v'].is_finite().all():
+            raise NOAAError('NOAA returned incomplete tide heights. Please try again.')
+    except (requests.RequestException, ValueError, pl.exceptions.PolarsError) as exc:
+        raise NOAAError('Could not load tide predictions from NOAA. Please try again.') from exc
+    if time_zone == 'gmt':
+        df = df.with_columns(pl.col('t').dt.replace_time_zone('UTC'))
     return df
 
 
 def normalize_amplitude(df):
+    if df['v'].max() == df['v'].min():
+        return df.with_columns(pl.lit(0.0).alias('v_centered'), pl.lit(0.0).alias('amplitude'))
     mean = df['v'].mean()
     df = df.with_columns((pl.col('v') - mean).alias('v_centered')).with_columns(
         (
@@ -65,13 +85,15 @@ def col_to_hour(df, time_col, new_col_name=None):
     return df
 
 
-def get_sun_times(dates):
+def get_sun_times(dates, location=None):
+
+    location = location or city
 
     res = []
     for day in dates:
         y, m, d = day.strftime('%Y-%m-%d').split('-')
 
-        s = sun(city.observer, date=date(int(y), int(m), int(d)), tzinfo=city.timezone)
+        s = sun(location.observer, date=date(int(y), int(m), int(d)), tzinfo=location.timezone)
 
         sunrise = s['sunrise']  # .isoformat()[11:16]
         sunset = s['sunset']  # .isoformat()[11:16]

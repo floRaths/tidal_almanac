@@ -12,7 +12,7 @@
         color: #e8ebef;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=dark-20260708">
+    <link rel="stylesheet" href="styles.css?v=live-1">
   </head>
   <body>
     <main class="app">
@@ -28,6 +28,20 @@
       </header>
 
       <section class="controls" aria-label="Calendar controls">
+        <label class="field">
+          <span>Location</span>
+          <select id="stationSelect" name="station" disabled></select>
+        </label>
+
+        <label class="field">
+          <span>Year</span>
+          <input id="yearInput" name="year" type="number" min="1900" max="2100" step="1" required>
+        </label>
+
+        <div class="field load-field">
+          <button id="loadButton" type="button">Load calendar</button>
+        </div>
+
         <label class="field">
           <span>Month</span>
           <select id="monthSelect" name="month"></select>
@@ -52,6 +66,9 @@
         </div>
       </section>
 
+      <p id="loadStatus" class="load-status" role="status" aria-live="polite"></p>
+      <button id="retryButton" class="retry-button" type="button" hidden>Retry</button>
+
       <section class="chart-panel" aria-labelledby="chartTitle">
         <div class="chart-heading">
           <div>
@@ -71,6 +88,7 @@
       </section>
     </main>
 
-    <script src="main.js?v=dark-20260708"></script>
+    <script src="config.js?v=live-1"></script>
+    <script src="main.js?v=live-1"></script>
   </body>
 </html>

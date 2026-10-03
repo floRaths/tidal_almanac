@@ -1,4 +1,8 @@
 const DATA_URL = "data/tides-2026.json";
+const localPreview = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(location.hostname);
+const API_BASE = window.TIDAL_CONFIG?.apiBaseUrl?.replace(/\/$/, "") || (localPreview ? "" : null);
+const calendars = new Map();
+let requestId = 0;
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = [
   "January",
@@ -22,6 +26,11 @@ const state = {
 };
 
 const els = {
+  stationSelect: document.querySelector("#stationSelect"),
+  yearInput: document.querySelector("#yearInput"),
+  loadButton: document.querySelector("#loadButton"),
+  retryButton: document.querySelector("#retryButton"),
+  loadStatus: document.querySelector("#loadStatus"),
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
@@ -36,26 +45,124 @@ const els = {
 
 init();
 
-async function init() {
+async function fetchJson(url) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 300000);
   try {
-    const response = await fetch(DATA_URL);
-    if (!response.ok) {
-      throw new Error(`Could not load ${DATA_URL}`);
-    }
-
-    state.data = await response.json();
-    state.month = defaultMonth(state.data.year);
-
-    setupControls();
-    render();
+    const response = await fetch(url, { signal: controller.signal });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || "The calendar service is unavailable.");
+    return data;
   } catch (error) {
-    els.chart.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+    if (error.name === "AbortError") throw new Error("This request took too long. Please try again.");
+    if (error instanceof TypeError || error instanceof SyntaxError) {
+      throw new Error("Could not reach the calendar service. Check your connection and try again.");
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function setStatus(message, error = false) {
+  els.loadStatus.textContent = message;
+  els.loadStatus.dataset.error = String(error);
+  els.retryButton.hidden = !error;
+}
+
+async function init() {
+  setupControls();
+  els.yearInput.value = new Date().getFullYear();
+  els.loadButton.addEventListener("click", () => loadCalendar());
+  els.retryButton.addEventListener("click", () => initializeOrLoad());
+  els.yearInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter") loadCalendar();
+  });
+  await initializeOrLoad();
+}
+
+async function initializeOrLoad() {
+  try {
+    if (API_BASE === null) {
+      const data = await fetchJson(DATA_URL);
+      state.data = data;
+      state.month = defaultMonth(data.year);
+      els.stationSelect.innerHTML = `<option value="${escapeHtml(data.station.id)}">${escapeHtml(data.station.name)}</option>`;
+      els.yearInput.value = data.year;
+      els.yearInput.disabled = true;
+      els.loadButton.disabled = true;
+      els.monthSelect.value = String(state.month);
+      render();
+      setStatus("Showing the saved 2026 calendar. Location and year selection will be available when the live service is connected.");
+      return;
+    }
+    if (els.stationSelect.disabled) {
+      els.loadButton.disabled = true;
+      setStatus("Loading locations…");
+      const data = await fetchJson(`${API_BASE}/api/stations`);
+      if (!Array.isArray(data.stations) || !data.stations.length) throw new Error("No supported locations are available.");
+      els.stationSelect.innerHTML = data.stations.map((station) =>
+        `<option value="${escapeHtml(station.id)}">${escapeHtml(station.name)} · ${escapeHtml(station.region)}</option>`
+      ).join("");
+      els.stationSelect.value = "9410840";
+      els.yearInput.min = data.min_year;
+      els.yearInput.max = data.max_year;
+      els.stationSelect.disabled = false;
+    }
+    await loadCalendar();
+  } catch (error) {
+    setStatus(error.message, true);
+  } finally {
+    if (API_BASE !== null) els.loadButton.disabled = els.stationSelect.disabled;
+  }
+}
+
+async function loadCalendar() {
+  if (API_BASE === null || els.stationSelect.disabled) return;
+  if (!els.yearInput.reportValidity()) return;
+  const station = els.stationSelect.value;
+  const year = Number(els.yearInput.value);
+  const key = `${station}:${year}`;
+  const currentRequest = ++requestId;
+  els.loadButton.disabled = true;
+  els.chart.setAttribute("aria-busy", "true");
+  setStatus(`Calculating ${year} for ${els.stationSelect.selectedOptions[0].textContent}… The first request may take a few minutes.`);
+  try {
+    let data = calendars.get(key);
+    if (!data || Date.now() - data.savedAt > 3600000) {
+      const result = await fetchJson(`${API_BASE}/api/calendar?station=${encodeURIComponent(station)}&year=${year}`);
+      if (result.year !== year || result.station?.id !== station || !Array.isArray(result.records)) {
+        throw new Error("The calendar service returned an unexpected result. Please try again.");
+      }
+      data = { result, savedAt: Date.now() };
+      calendars.set(key, data);
+    }
+    if (currentRequest !== requestId) return;
+    const firstLoad = !state.data;
+    state.data = data.result;
+    if (firstLoad) state.month = defaultMonth(year);
+    els.monthSelect.value = String(state.month);
+    render();
+    const updated = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: state.data.station.timezone }).format(new Date(state.data.generated_at));
+    setStatus(`NOAA predictions · Calculated ${updated} (${state.data.station.timezone})`);
+  } catch (error) {
+    if (currentRequest === requestId) setStatus(`${error.message}${state.data ? " The previous calendar is still shown." : ""}`, true);
+  } finally {
+    if (currentRequest === requestId) {
+      els.loadButton.disabled = false;
+      els.chart.setAttribute("aria-busy", "false");
+    }
   }
 }
 
 function defaultMonth(year) {
   const now = new Date();
-  return now.getFullYear() === year ? now.getMonth() + 1 : 1;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: state.data?.station.timezone || "America/Los_Angeles",
+    year: "numeric", month: "numeric",
+  }).formatToParts(now);
+  const currentYear = Number(parts.find((part) => part.type === "year").value);
+  return currentYear === year ? Number(parts.find((part) => part.type === "month").value) : 1;
 }
 
 function setupControls() {
@@ -83,6 +190,7 @@ function setupControls() {
 }
 
 function render() {
+  if (!state.data) return;
   const records = recordsForSelection();
   const monthName = MONTHS[state.month - 1];
   const eventName = titleCase(state.daytime);
@@ -126,7 +234,8 @@ function renderSvg(records, monthName, eventName) {
 
   const width = 740;
   const margin = { top: 86, right: 44, bottom: 78, left: 74 };
-  const weeks = [...new Set(records.map((record) => record.week))].sort((a, b) => a - b);
+  // Keep calendar rows chronological across the ISO week/year boundary.
+  const weeks = [...new Set(records.map((record) => record.week))];
   const rowHeight = 76;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = weeks.length * rowHeight;
