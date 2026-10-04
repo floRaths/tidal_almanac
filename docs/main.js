@@ -115,6 +115,8 @@ async function goToToday() {
 }
 
 function setupControls() {
+  const chartObserver = new ResizeObserver(alignDayDetails);
+  chartObserver.observe(els.chart);
   els.yearSelect.innerHTML = AVAILABLE_YEARS.map((year) => `<option value="${year}">${year}</option>`).join("");
   els.yearSelect.addEventListener("change", (event) => loadYear(Number(event.target.value)));
   els.retryButton.addEventListener("click", () => loadYear(requestedYear, requestedInitial || !state.data));
@@ -185,7 +187,16 @@ function render() {
 
   renderStats(records);
   renderSvg(records, monthName, eventName);
+  alignDayDetails();
   renderDayDetails(records.find((record) => record.date === state.selectedDate));
+}
+
+function alignDayDetails() {
+  const grid = els.chart.querySelector(".plot-border");
+  if (!grid) return;
+  const bounds = grid.getBoundingClientRect();
+  const top = bounds.top - els.chart.getBoundingClientRect().top;
+  els.dayDetails.style.setProperty("--calendar-grid-top", `${top}px`);
 }
 
 function selectDay(date) {
@@ -250,10 +261,10 @@ function renderSvg(records, monthName, eventName) {
   const margin = { top: 86, right: 44, bottom: 78, left: 74 };
   // ISO week numbers wrap at New Year; retain their calendar order.
   const weeks = [...new Set(records.map((record) => record.week))];
-  const rowHeight = 76;
   const plotWidth = width - margin.left - margin.right;
-  const plotHeight = weeks.length * rowHeight;
-  const height = margin.top + plotHeight + margin.bottom;
+  const height = (margin.top + weeks.length * 76 + margin.bottom) * 1.1;
+  const plotHeight = height - margin.top - margin.bottom;
+  const rowHeight = plotHeight / weeks.length;
   const colWidth = plotWidth / 7;
 
   const weekIndex = new Map(weeks.map((week, index) => [week, index]));
@@ -299,12 +310,12 @@ function renderSvg(records, monthName, eventName) {
 
   const weekdayLabels = WEEKDAYS.map((label, index) => {
     const x = margin.left + index * colWidth + colWidth / 2;
-    return `<text class="axis-label" x="${x.toFixed(2)}" y="${height - 32}" text-anchor="middle">${label}</text>`;
+    return `<text class="axis-label" x="${x.toFixed(2)}" y="${(margin.top + plotHeight + 24).toFixed(2)}" text-anchor="middle">${label}</text>`;
   }).join("");
 
   const weekLabels = weeks.map((week, index) => {
     const y = margin.top + index * rowHeight + rowHeight / 2 + 5;
-    return `<text class="week-label" x="${margin.left - 22}" y="${y.toFixed(2)}" text-anchor="end">${week}</text>`;
+    return `<text class="week-label" x="${margin.left - 10}" y="${y.toFixed(2)}" text-anchor="end">${week}</text>`;
   }).join("");
 
   els.chart.innerHTML = `
