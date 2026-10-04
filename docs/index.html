@@ -12,7 +12,7 @@
         color: #e8ebef;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=dark-20260708">
+    <link rel="stylesheet" href="styles.css?v=labels-20261003">
   </head>
   <body>
     <main class="app">
@@ -42,35 +42,32 @@
         </div>
 
         <div class="stat">
-          <span>Mean tide</span>
+          <span>Mean predicted height</span>
           <strong id="meanHeight">--</strong>
         </div>
 
         <div class="stat">
-          <span>Range</span>
+          <span>Normalized range</span>
           <strong id="ampRange">--</strong>
         </div>
       </section>
 
-      <section class="chart-panel" aria-labelledby="chartTitle">
-        <div class="chart-heading">
-          <div>
-            <h2 id="chartTitle">January at sunset</h2>
-            <p id="chartSubhead">Normalized tide amplitude nearest sunset</p>
-          </div>
-          <div class="legend" aria-label="Amplitude color scale">
+      <section class="chart-panel" aria-label="Predicted tide calendar" aria-describedby="chartExplanation">
+        <div class="chart-frame">
+          <div id="chart" aria-live="polite"></div>
+        </div>
+
+        <div class="chart-key">
+          <div class="legend" aria-label="Normalized tide height color scale">
             <span>Low</span>
             <span class="legend-bar" aria-hidden="true"></span>
             <span>High</span>
           </div>
-        </div>
-
-        <div class="chart-frame">
-          <div id="chart" aria-live="polite"></div>
+          <p id="chartExplanation">Heights are NOAA predictions nearest the selected solar event, in meters relative to Mean Lower Low Water (MLLW). Color uses the full year’s tide predictions: −1 is the annual low, 0 the midpoint, and +1 the annual high. Larger circles show heights farther from that midpoint. Negative normalized values do not necessarily mean heights below zero meters.</p>
         </div>
       </section>
     </main>
 
-    <script src="main.js?v=dark-20260708"></script>
+    <script src="main.js?v=labels-20261003"></script>
   </body>
 </html>

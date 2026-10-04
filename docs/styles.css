@@ -55,7 +55,6 @@ select {
 }
 
 h1,
-h2,
 p {
   margin: 0;
 }
@@ -64,12 +63,6 @@ h1 {
   font-size: clamp(2.1rem, 5vw, 4.2rem);
   line-height: 0.92;
   font-weight: 800;
-  letter-spacing: 0;
-}
-
-h2 {
-  font-size: clamp(1.3rem, 3vw, 2.2rem);
-  line-height: 1;
   letter-spacing: 0;
 }
 
@@ -172,18 +165,16 @@ select:focus-visible {
   overflow: hidden;
 }
 
-.chart-heading {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 20px 22px 10px;
+.chart-key {
+  display: grid;
+  gap: 12px;
+  padding: 0 22px 22px;
 }
 
-.chart-heading p {
-  margin-top: 7px;
+.chart-key p {
   color: var(--muted);
-  font-size: 0.95rem;
+  font-size: 0.85rem;
+  line-height: 1.6;
 }
 
 .legend {
@@ -196,6 +187,7 @@ select:focus-visible {
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+  justify-self: start;
 }
 
 .legend-bar {
@@ -273,8 +265,7 @@ select:focus-visible {
     padding-top: 18px;
   }
 
-  .masthead,
-  .chart-heading {
+  .masthead {
     align-items: start;
     flex-direction: column;
   }

@@ -25,8 +25,6 @@ const els = {
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
-  chartTitle: document.querySelector("#chartTitle"),
-  chartSubhead: document.querySelector("#chartSubhead"),
   stationLabel: document.querySelector("#stationLabel"),
   yearLabel: document.querySelector("#yearLabel"),
   eventLabel: document.querySelector("#eventLabel"),
@@ -90,8 +88,6 @@ function render() {
   els.stationLabel.textContent = state.data.station.name;
   els.yearLabel.textContent = state.data.year;
   els.eventLabel.textContent = eventName;
-  els.chartTitle.textContent = `${monthName} at ${state.daytime}`;
-  els.chartSubhead.textContent = `${state.data.station.name} tide nearest ${state.daytime}`;
 
   renderStats(records);
   renderSvg(records, monthName, eventName);
@@ -158,8 +154,8 @@ function renderSvg(records, monthName, eventName) {
     const title = [
       `${record.weekday_name}, ${monthName} ${record.day}`,
       `${eventName}: ${sunTime}`,
-      `Tide: ${tideTime}, ${record.height_m.toFixed(2)} m`,
-      `Amplitude: ${amp.toFixed(2)}`,
+      `Predicted tide: ${tideTime}, ${record.height_m.toFixed(2)} m`,
+      `Normalized height: ${amp.toFixed(2)}`,
       record.moon_phase_name,
     ].join(" | ");
 
@@ -186,9 +182,9 @@ function renderSvg(records, monthName, eventName) {
   els.chart.innerHTML = `
     <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="svgTitle svgDesc">
       <title id="svgTitle">${monthName} ${state.data.year} ${state.daytime} tide calendar</title>
-      <desc id="svgDesc">Calendar grid with one circle per day. Circle size and color encode normalized tide amplitude nearest ${state.daytime}.</desc>
+      <desc id="svgDesc">Calendar grid with one circle per day showing predicted tide height nearest ${state.daytime}. Color scales from the annual low to the annual high. Circle size shows distance from their midpoint.</desc>
       <text class="month-title" x="${margin.left}" y="46">${monthName}</text>
-      <text class="axis-label" x="${margin.left}" y="70">${eventName} tide amplitude</text>
+      <text class="axis-label" x="${margin.left}" y="70">Predicted tide height at ${state.daytime}</text>
       ${gridLines.join("")}
       <rect class="plot-border" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}"></rect>
       ${weekLabels}
