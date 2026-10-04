@@ -1,4 +1,7 @@
-const DATA_URL = "data/tides-2026.json";
+const AVAILABLE_YEARS = [2026, 2027, 2028];
+const calendarCache = new Map();
+let requestId = 0;
+let requestedYear = null;
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = [
   "January",
@@ -23,6 +26,9 @@ const state = {
 };
 
 const els = {
+  yearSelect: document.querySelector("#yearSelect"),
+  calendarStatus: document.querySelector("#calendarStatus"),
+  retryButton: document.querySelector("#retryButton"),
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
@@ -37,22 +43,53 @@ const els = {
 init();
 
 async function init() {
-  try {
-    const response = await fetch(DATA_URL);
-    if (!response.ok) {
-      throw new Error(`Could not load ${DATA_URL}`);
-    }
+  setupControls();
+  const currentYear = Number(dateInTimezone(new Date(), "America/Los_Angeles").slice(0, 4));
+  const year = AVAILABLE_YEARS.includes(currentYear) ? currentYear : AVAILABLE_YEARS.at(-1);
+  await loadYear(year, true);
+}
 
-    state.data = await response.json();
+async function loadYear(year, initial = false) {
+  const currentRequest = ++requestId;
+  requestedYear = year;
+  els.yearSelect.value = String(year);
+  els.chart.setAttribute("aria-busy", "true");
+  els.calendarStatus.hidden = false;
+  els.calendarStatus.textContent = `Loading ${year} calendar…`;
+  els.retryButton.hidden = true;
+  try {
+    let data = calendarCache.get(year);
+    if (!data) {
+      const response = await fetch(`data/tides-${year}.json`);
+      if (!response.ok) throw new Error(`Could not load the ${year} calendar. Please try again.`);
+      data = await response.json();
+      if (data.year !== year || !Array.isArray(data.records)) throw new Error(`The ${year} calendar data is invalid.`);
+      calendarCache.set(year, data);
+    }
+    if (currentRequest !== requestId) return;
+    const firstLoad = !state.data;
+    const previousDate = state.selectedDate;
+    state.data = data;
     const today = dateInTimezone(new Date(), state.data.station.timezone);
     const todayRecord = state.data.records.find((record) => record.date === today && record.daytime === state.daytime);
-    state.month = todayRecord?.month || 1;
-    state.selectedDate = todayRecord?.date || null;
-
-    setupControls();
+    if (initial || firstLoad) {
+      state.month = todayRecord?.month || 1;
+      state.selectedDate = todayRecord?.date || null;
+    } else {
+      const date = previousDate ? `${year}${previousDate.slice(4)}` : null;
+      state.selectedDate = data.records.some((record) => record.date === date) ? date : null;
+      if (!state.selectedDate && todayRecord?.month === state.month) state.selectedDate = todayRecord.date;
+    }
+    els.monthSelect.value = String(state.month);
     render();
+    els.calendarStatus.hidden = true;
   } catch (error) {
-    els.chart.innerHTML = `<p class="empty-state">${escapeHtml(error.message)}</p>`;
+    if (currentRequest !== requestId) return;
+    els.calendarStatus.textContent = `${error.message}${state.data ? ` Still showing ${state.data.year}.` : ""}`;
+    els.retryButton.hidden = false;
+    if (state.data) els.yearSelect.value = String(state.data.year);
+  } finally {
+    if (currentRequest === requestId) els.chart.setAttribute("aria-busy", "false");
   }
 }
 
@@ -65,6 +102,9 @@ function dateInTimezone(date, timeZone) {
 }
 
 function setupControls() {
+  els.yearSelect.innerHTML = AVAILABLE_YEARS.map((year) => `<option value="${year}">${year}</option>`).join("");
+  els.yearSelect.addEventListener("change", (event) => loadYear(Number(event.target.value)));
+  els.retryButton.addEventListener("click", () => loadYear(requestedYear, !state.data));
   els.chart.addEventListener("click", (event) => {
     const day = event.target.closest("[data-date]");
     if (day) {
@@ -121,6 +161,7 @@ function setupControls() {
 }
 
 function render() {
+  if (!state.data) return;
   const records = recordsForSelection();
   const monthName = MONTHS[state.month - 1];
   const eventName = titleCase(state.daytime);
@@ -195,7 +236,8 @@ function renderSvg(records, monthName, eventName) {
 
   const width = 740;
   const margin = { top: 86, right: 44, bottom: 78, left: 74 };
-  const weeks = [...new Set(records.map((record) => record.week))].sort((a, b) => a - b);
+  // ISO week numbers wrap at New Year; retain their calendar order.
+  const weeks = [...new Set(records.map((record) => record.week))];
   const rowHeight = 76;
   const plotWidth = width - margin.left - margin.right;
   const plotHeight = weeks.length * rowHeight;
