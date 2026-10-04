@@ -66,23 +66,6 @@ h1 {
   letter-spacing: 0;
 }
 
-.meta {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-}
-
-.meta span {
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  padding: 7px 12px;
-  background: rgba(255, 255, 255, 0.04);
-  color: var(--muted);
-  font-size: 0.86rem;
-  font-weight: 700;
-}
-
 .controls {
   display: grid;
   grid-template-columns: minmax(90px, 0.6fr) minmax(130px, 1fr) minmax(180px, 1.25fr) repeat(2, minmax(130px, 0.9fr));
@@ -302,10 +285,6 @@ select:focus-visible {
   .masthead {
     align-items: start;
     flex-direction: column;
-  }
-
-  .meta {
-    justify-content: flex-start;
   }
 
   .controls {

@@ -34,8 +34,6 @@ const els = {
   chart: document.querySelector("#chart"),
   dayDetails: document.querySelector("#dayDetails"),
   stationLabel: document.querySelector("#stationLabel"),
-  yearLabel: document.querySelector("#yearLabel"),
-  eventLabel: document.querySelector("#eventLabel"),
   meanHeight: document.querySelector("#meanHeight"),
   ampRange: document.querySelector("#ampRange"),
 };
@@ -168,8 +166,6 @@ function render() {
   if (!records.some((record) => record.date === state.selectedDate)) state.selectedDate = null;
 
   els.stationLabel.textContent = state.data.station.name;
-  els.yearLabel.textContent = state.data.year;
-  els.eventLabel.textContent = eventName;
 
   renderStats(records);
   renderSvg(records, monthName, eventName);
