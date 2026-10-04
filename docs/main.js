@@ -2,6 +2,7 @@ const AVAILABLE_YEARS = [2026, 2027, 2028];
 const calendarCache = new Map();
 let requestId = 0;
 let requestedYear = null;
+let requestedInitial = false;
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = [
   "January",
@@ -29,6 +30,7 @@ const els = {
   yearSelect: document.querySelector("#yearSelect"),
   calendarStatus: document.querySelector("#calendarStatus"),
   retryButton: document.querySelector("#retryButton"),
+  todayButton: document.querySelector("#todayButton"),
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
@@ -50,6 +52,7 @@ async function init() {
 async function loadYear(year, initial = false) {
   const currentRequest = ++requestId;
   requestedYear = year;
+  requestedInitial = initial;
   els.yearSelect.value = String(year);
   els.chart.setAttribute("aria-busy", "true");
   els.calendarStatus.hidden = false;
@@ -99,10 +102,23 @@ function dateInTimezone(date, timeZone) {
   return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
+async function goToToday() {
+  const today = dateInTimezone(new Date(), state.data?.station.timezone || "America/Los_Angeles");
+  const year = Number(today.slice(0, 4));
+  if (!AVAILABLE_YEARS.includes(year)) {
+    els.calendarStatus.hidden = false;
+    els.calendarStatus.textContent = `Today’s calendar is unavailable. Available years: ${AVAILABLE_YEARS.join(", ")}.`;
+    els.retryButton.hidden = true;
+    return;
+  }
+  await loadYear(year, true);
+}
+
 function setupControls() {
   els.yearSelect.innerHTML = AVAILABLE_YEARS.map((year) => `<option value="${year}">${year}</option>`).join("");
   els.yearSelect.addEventListener("change", (event) => loadYear(Number(event.target.value)));
-  els.retryButton.addEventListener("click", () => loadYear(requestedYear, !state.data));
+  els.retryButton.addEventListener("click", () => loadYear(requestedYear, requestedInitial || !state.data));
+  els.todayButton.addEventListener("click", goToToday);
   els.chart.addEventListener("click", (event) => {
     const day = event.target.closest("[data-date]");
     if (day) {
