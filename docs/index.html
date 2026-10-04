@@ -12,7 +12,7 @@
         color: #e8ebef;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=labels-20261003">
+    <link rel="stylesheet" href="styles.css?v=details-20261003">
   </head>
   <body>
     <main class="app">
@@ -54,7 +54,11 @@
 
       <section class="chart-panel" aria-label="Predicted tide calendar" aria-describedby="chartExplanation">
         <div class="chart-frame">
-          <div id="chart" aria-live="polite"></div>
+          <div id="chart"></div>
+        </div>
+
+        <div id="dayDetails" class="day-details" role="status" aria-live="polite" aria-atomic="true">
+          <p>Tap a day or focus the calendar and use the arrow keys to see its details.</p>
         </div>
 
         <div class="chart-key">
@@ -68,6 +72,6 @@
       </section>
     </main>
 
-    <script src="main.js?v=labels-20261003"></script>
+    <script src="main.js?v=today-20261003"></script>
   </body>
 </html>

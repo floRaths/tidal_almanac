@@ -19,12 +19,14 @@ const state = {
   data: null,
   month: 1,
   daytime: "sunset",
+  selectedDate: null,
 };
 
 const els = {
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
+  dayDetails: document.querySelector("#dayDetails"),
   stationLabel: document.querySelector("#stationLabel"),
   yearLabel: document.querySelector("#yearLabel"),
   eventLabel: document.querySelector("#eventLabel"),
@@ -42,7 +44,10 @@ async function init() {
     }
 
     state.data = await response.json();
-    state.month = defaultMonth(state.data.year);
+    const today = dateInTimezone(new Date(), state.data.station.timezone);
+    const todayRecord = state.data.records.find((record) => record.date === today && record.daytime === state.daytime);
+    state.month = todayRecord?.month || 1;
+    state.selectedDate = todayRecord?.date || null;
 
     setupControls();
     render();
@@ -51,12 +56,47 @@ async function init() {
   }
 }
 
-function defaultMonth(year) {
-  const now = new Date();
-  return now.getFullYear() === year ? now.getMonth() + 1 : 1;
+function dateInTimezone(date, timeZone) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
 }
 
 function setupControls() {
+  els.chart.addEventListener("click", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (day) {
+      selectDay(day.dataset.date);
+      day.focus();
+    }
+  });
+
+  els.chart.addEventListener("focusin", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (day) selectDay(day.dataset.date);
+  });
+
+  els.chart.addEventListener("keydown", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (!day) return;
+    const days = [...els.chart.querySelectorAll("[data-date]")];
+    const index = days.indexOf(day);
+    const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    let next;
+    if (event.key in offsets) next = index + offsets[event.key];
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = days.length - 1;
+    else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectDay(day.dataset.date);
+      return;
+    } else return;
+    event.preventDefault();
+    days[Math.max(0, Math.min(days.length - 1, next))].focus();
+  });
+
   els.monthSelect.innerHTML = MONTHS.map((name, index) => {
     const month = index + 1;
     return `<option value="${month}">${name}</option>`;
@@ -84,6 +124,7 @@ function render() {
   const records = recordsForSelection();
   const monthName = MONTHS[state.month - 1];
   const eventName = titleCase(state.daytime);
+  if (!records.some((record) => record.date === state.selectedDate)) state.selectedDate = null;
 
   els.stationLabel.textContent = state.data.station.name;
   els.yearLabel.textContent = state.data.year;
@@ -91,6 +132,38 @@ function render() {
 
   renderStats(records);
   renderSvg(records, monthName, eventName);
+  renderDayDetails(records.find((record) => record.date === state.selectedDate));
+}
+
+function selectDay(date) {
+  const record = recordsForSelection().find((item) => item.date === date);
+  if (!record || state.selectedDate === date) return;
+  state.selectedDate = date;
+  for (const day of els.chart.querySelectorAll("[data-date]")) {
+    const selected = day.dataset.date === date;
+    day.setAttribute("aria-pressed", String(selected));
+    day.setAttribute("tabindex", selected ? "0" : "-1");
+  }
+  renderDayDetails(record);
+}
+
+function renderDayDetails(record) {
+  if (!record) {
+    els.dayDetails.innerHTML = '<p>Tap a day or focus the calendar and use the arrow keys to see its details.</p>';
+    return;
+  }
+  const fields = [
+    ["Predicted height", `${record.height_m.toFixed(2)} m (MLLW)`],
+    ["Tide time", formatTime(record.tide_time)],
+    [titleCase(record.daytime), formatTime(record.sun_time)],
+    ["Normalized height", record.normalized_amplitude.toFixed(2)],
+    ["Moon phase", record.moon_phase_name],
+  ];
+  els.dayDetails.innerHTML = `
+    <h2>${escapeHtml(`${record.weekday_name}, ${MONTHS[record.month - 1]} ${record.day}, ${state.data.year}`)}</h2>
+    <p class="details-timezone">Times in ${escapeHtml(state.data.station.timezone)}</p>
+    <dl>${fields.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>
+  `;
 }
 
 function recordsForSelection() {
@@ -160,7 +233,8 @@ function renderSvg(records, monthName, eventName) {
     ].join(" | ");
 
     dots.push(`
-      <g>
+      <g class="day-target" data-date="${escapeHtml(record.date)}" role="button" tabindex="${record.date === (state.selectedDate || records[0].date) ? "0" : "-1"}" aria-label="${escapeHtml(title)}" aria-pressed="${record.date === state.selectedDate}" aria-controls="dayDetails">
+        <rect class="day-hit" x="${(x - colWidth / 2 + 3).toFixed(2)}" y="${(y - rowHeight / 2 + 3).toFixed(2)}" width="${(colWidth - 6).toFixed(2)}" height="${rowHeight - 6}" rx="6"></rect>
         <circle class="tide-dot" cx="${x.toFixed(2)}" cy="${(y - 9).toFixed(2)}" r="${radius.toFixed(2)}" fill="${colorForAmplitude(amp)}">
           <title>${escapeHtml(title)}</title>
         </circle>
@@ -180,9 +254,9 @@ function renderSvg(records, monthName, eventName) {
   }).join("");
 
   els.chart.innerHTML = `
-    <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="svgTitle svgDesc">
+    <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="group" aria-labelledby="svgTitle" aria-describedby="svgDesc">
       <title id="svgTitle">${monthName} ${state.data.year} ${state.daytime} tide calendar</title>
-      <desc id="svgDesc">Calendar grid with one circle per day showing predicted tide height nearest ${state.daytime}. Color scales from the annual low to the annual high. Circle size shows distance from their midpoint.</desc>
+      <desc id="svgDesc">Calendar grid with one selectable day per date showing predicted tide height nearest ${state.daytime}. Use arrow keys to move by day or week, Home and End for the first and last day, or tap a day for details. Color scales from the annual low to the annual high. Circle size shows distance from their midpoint.</desc>
       <text class="month-title" x="${margin.left}" y="46">${monthName}</text>
       <text class="axis-label" x="${margin.left}" y="70">Predicted tide height at ${state.daytime}</text>
       ${gridLines.join("")}

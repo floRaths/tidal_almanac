@@ -162,7 +162,7 @@ select:focus-visible {
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
-  overflow: hidden;
+  overflow: clip;
 }
 
 .chart-key {
@@ -253,6 +253,35 @@ select:focus-visible {
   stroke-width: 1.5;
 }
 
+.day-target { cursor: pointer; outline: none; }
+.day-hit { fill: transparent; stroke: transparent; stroke-width: 2; }
+.day-target[aria-pressed="true"] .day-hit {
+  fill: rgba(123, 215, 238, 0.08);
+  stroke: var(--line-strong);
+}
+.day-target:focus-visible .day-hit {
+  stroke: var(--focus);
+  stroke-width: 3;
+}
+.day-target .tide-dot, .day-target .day-label { pointer-events: none; }
+.day-details {
+  position: sticky;
+  bottom: 12px;
+  z-index: 1;
+  margin: 0 22px 22px;
+  padding: 16px;
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  background: var(--panel-soft);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.day-details h2 { margin: 0; font-size: 1rem; }
+.day-details p { color: var(--muted); font-size: 0.85rem; line-height: 1.5; }
+.details-timezone { margin-top: 4px; }
+.day-details dl { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; margin: 14px 0 0; }
+.day-details dt { color: var(--muted); font-size: 0.75rem; margin-bottom: 4px; }
+.day-details dd { margin: 0; font-size: 0.9rem; overflow-wrap: anywhere; }
+
 .empty-state {
   padding: 48px 20px;
   color: var(--muted);
@@ -260,6 +289,7 @@ select:focus-visible {
 }
 
 @media (max-width: 820px) {
+  .day-details dl { grid-template-columns: repeat(3, minmax(0, 1fr)); }
   .app {
     width: min(100% - 20px, 1180px);
     padding-top: 18px;
@@ -280,6 +310,7 @@ select:focus-visible {
 }
 
 @media (max-width: 540px) {
+  .day-details { margin-right: 10px; margin-left: 10px; padding: 12px; bottom: 8px; }
   .controls {
     grid-template-columns: 1fr;
   }
