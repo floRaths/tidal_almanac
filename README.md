@@ -21,6 +21,12 @@ uv run server.py
 ```
 
 Open http://127.0.0.1:8000. Select a location and year, then **Load calendar**.
+The calendar selects today in the station's time zone on first load. Tap or focus
+a day to see its predicted height, times, and moon phase. Arrow keys move by day
+or week; Home/End select the first/last day. **Today** returns to the current date
+for the selected station while keeping the sunrise/sunset choice.
+Details appear beside the grid on desktop and below it on mobile. Mobile controls
+pair year/month and height/range; the event and location controls stay full-width.
 The initial request downloads a year of predictions in up to three chunks;
 subsequent requests reuse the server cache. Months and sunrise/sunset switch
 immediately without contacting the API. Supported input years are 1900–2100,

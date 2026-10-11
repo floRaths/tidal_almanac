@@ -3,6 +3,8 @@ const localPreview = ["localhost", "127.0.0.1", "::1", "[::1]"].includes(locatio
 const API_BASE = window.TIDAL_CONFIG?.apiBaseUrl?.replace(/\/$/, "") || (localPreview ? "" : null);
 const calendars = new Map();
 let requestId = 0;
+let stationOptions = [];
+let selectTodayOnRetry = false;
 const WEEKDAYS = ["Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"];
 const MONTHS = [
   "January",
@@ -23,6 +25,7 @@ const state = {
   data: null,
   month: 1,
   daytime: "sunset",
+  selectedDate: null,
 };
 
 const els = {
@@ -34,11 +37,9 @@ const els = {
   monthSelect: document.querySelector("#monthSelect"),
   daytimeControl: document.querySelector("#daytimeControl"),
   chart: document.querySelector("#chart"),
-  chartTitle: document.querySelector("#chartTitle"),
-  chartSubhead: document.querySelector("#chartSubhead"),
+  dayDetails: document.querySelector("#dayDetails"),
+  todayButton: document.querySelector("#todayButton"),
   stationLabel: document.querySelector("#stationLabel"),
-  yearLabel: document.querySelector("#yearLabel"),
-  eventLabel: document.querySelector("#eventLabel"),
   meanHeight: document.querySelector("#meanHeight"),
   ampRange: document.querySelector("#ampRange"),
 };
@@ -72,7 +73,8 @@ function setStatus(message, error = false) {
 
 async function init() {
   setupControls();
-  els.yearInput.value = new Date().getFullYear();
+  els.yearInput.value = Number(dateInTimezone(new Date(), "America/Los_Angeles").slice(0, 4));
+  els.todayButton.disabled = API_BASE !== null;
   els.loadButton.addEventListener("click", () => loadCalendar());
   els.retryButton.addEventListener("click", () => initializeOrLoad());
   els.yearInput.addEventListener("keydown", (event) => {
@@ -85,14 +87,11 @@ async function initializeOrLoad() {
   try {
     if (API_BASE === null) {
       const data = await fetchJson(DATA_URL);
-      state.data = data;
-      state.month = defaultMonth(data.year);
       els.stationSelect.innerHTML = `<option value="${escapeHtml(data.station.id)}">${escapeHtml(data.station.name)}</option>`;
       els.yearInput.value = data.year;
       els.yearInput.disabled = true;
       els.loadButton.disabled = true;
-      els.monthSelect.value = String(state.month);
-      render();
+      applyCalendar(data);
       setStatus("Showing the saved 2026 calendar. Location and year selection will be available when the live service is connected.");
       return;
     }
@@ -101,6 +100,7 @@ async function initializeOrLoad() {
       setStatus("Loading locations…");
       const data = await fetchJson(`${API_BASE}/api/stations`);
       if (!Array.isArray(data.stations) || !data.stations.length) throw new Error("No supported locations are available.");
+      stationOptions = data.stations;
       els.stationSelect.innerHTML = data.stations.map((station) =>
         `<option value="${escapeHtml(station.id)}">${escapeHtml(station.name)} · ${escapeHtml(station.region)}</option>`
       ).join("");
@@ -108,8 +108,9 @@ async function initializeOrLoad() {
       els.yearInput.min = data.min_year;
       els.yearInput.max = data.max_year;
       els.stationSelect.disabled = false;
+      els.todayButton.disabled = false;
     }
-    await loadCalendar();
+    await loadCalendar({ selectToday: selectTodayOnRetry });
   } catch (error) {
     setStatus(error.message, true);
   } finally {
@@ -117,9 +118,10 @@ async function initializeOrLoad() {
   }
 }
 
-async function loadCalendar() {
+async function loadCalendar({ selectToday = false } = {}) {
   if (API_BASE === null || els.stationSelect.disabled) return;
   if (!els.yearInput.reportValidity()) return;
+  selectTodayOnRetry = selectToday;
   const station = els.stationSelect.value;
   const year = Number(els.yearInput.value);
   const key = `${station}:${year}`;
@@ -138,11 +140,7 @@ async function loadCalendar() {
       calendars.set(key, data);
     }
     if (currentRequest !== requestId) return;
-    const firstLoad = !state.data;
-    state.data = data.result;
-    if (firstLoad) state.month = defaultMonth(year);
-    els.monthSelect.value = String(state.month);
-    render();
+    applyCalendar(data.result, selectToday);
     const updated = new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short", timeZone: state.data.station.timezone }).format(new Date(state.data.generated_at));
     setStatus(`NOAA predictions · Calculated ${updated} (${state.data.station.timezone})`);
   } catch (error) {
@@ -155,17 +153,88 @@ async function loadCalendar() {
   }
 }
 
-function defaultMonth(year) {
-  const now = new Date();
+function dateInTimezone(date, timeZone) {
   const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: state.data?.station.timezone || "America/Los_Angeles",
-    year: "numeric", month: "numeric",
-  }).formatToParts(now);
-  const currentYear = Number(parts.find((part) => part.type === "year").value);
-  return currentYear === year ? Number(parts.find((part) => part.type === "month").value) : 1;
+    timeZone, year: "numeric", month: "2-digit", day: "2-digit",
+  }).formatToParts(date);
+  const part = (type) => parts.find((item) => item.type === type).value;
+  return `${part("year")}-${part("month")}-${part("day")}`;
+}
+
+function applyCalendar(data, selectToday = false) {
+  const firstLoad = !state.data;
+  const previousDate = state.selectedDate;
+  state.data = data;
+  const today = dateInTimezone(new Date(), data.station.timezone);
+  const todayRecord = data.records.find((record) => record.date === today && record.daytime === state.daytime);
+  if (firstLoad || selectToday) {
+    state.month = todayRecord?.month || 1;
+    state.selectedDate = todayRecord?.date || null;
+  } else {
+    const date = previousDate ? `${data.year}${previousDate.slice(4)}` : null;
+    state.selectedDate = data.records.some((record) => record.date === date) ? date : null;
+    if (!state.selectedDate && todayRecord?.month === state.month) state.selectedDate = todayRecord.date;
+  }
+  els.monthSelect.value = String(state.month);
+  render();
+}
+
+async function goToToday() {
+  const station = stationOptions.find((item) => item.id === els.stationSelect.value) || state.data?.station;
+  if (!station) return;
+  const today = dateInTimezone(new Date(), station.timezone);
+  if (API_BASE === null) {
+    const record = state.data.records.find((item) => item.date === today && item.daytime === state.daytime);
+    if (!record) {
+      setStatus(`Today is outside the saved ${state.data.year} calendar.`);
+      return;
+    }
+    state.month = record.month;
+    state.selectedDate = record.date;
+    els.monthSelect.value = String(state.month);
+    render();
+    return;
+  }
+  els.yearInput.value = today.slice(0, 4);
+  await loadCalendar({ selectToday: true });
 }
 
 function setupControls() {
+  const chartObserver = new ResizeObserver(alignDayDetails);
+  chartObserver.observe(els.chart);
+  els.todayButton.addEventListener("click", goToToday);
+  els.chart.addEventListener("click", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (day) {
+      selectDay(day.dataset.date);
+      day.focus();
+    }
+  });
+
+  els.chart.addEventListener("focusin", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (day) selectDay(day.dataset.date);
+  });
+
+  els.chart.addEventListener("keydown", (event) => {
+    const day = event.target.closest("[data-date]");
+    if (!day) return;
+    const days = [...els.chart.querySelectorAll("[data-date]")];
+    const index = days.indexOf(day);
+    const offsets = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -7, ArrowDown: 7 };
+    let next;
+    if (event.key in offsets) next = index + offsets[event.key];
+    else if (event.key === "Home") next = 0;
+    else if (event.key === "End") next = days.length - 1;
+    else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      selectDay(day.dataset.date);
+      return;
+    } else return;
+    event.preventDefault();
+    days[Math.max(0, Math.min(days.length - 1, next))].focus();
+  });
+
   els.monthSelect.innerHTML = MONTHS.map((name, index) => {
     const month = index + 1;
     return `<option value="${month}">${name}</option>`;
@@ -194,15 +263,53 @@ function render() {
   const records = recordsForSelection();
   const monthName = MONTHS[state.month - 1];
   const eventName = titleCase(state.daytime);
+  if (!records.some((record) => record.date === state.selectedDate)) state.selectedDate = null;
 
   els.stationLabel.textContent = state.data.station.name;
-  els.yearLabel.textContent = state.data.year;
-  els.eventLabel.textContent = eventName;
-  els.chartTitle.textContent = `${monthName} at ${state.daytime}`;
-  els.chartSubhead.textContent = `${state.data.station.name} tide nearest ${state.daytime}`;
 
   renderStats(records);
   renderSvg(records, monthName, eventName);
+  alignDayDetails();
+  renderDayDetails(records.find((record) => record.date === state.selectedDate));
+}
+
+function alignDayDetails() {
+  const grid = els.chart.querySelector(".plot-border");
+  if (!grid) return;
+  const bounds = grid.getBoundingClientRect();
+  const top = bounds.top - els.chart.getBoundingClientRect().top;
+  els.dayDetails.style.setProperty("--calendar-grid-top", `${top}px`);
+}
+
+function selectDay(date) {
+  const record = recordsForSelection().find((item) => item.date === date);
+  if (!record || state.selectedDate === date) return;
+  state.selectedDate = date;
+  for (const day of els.chart.querySelectorAll("[data-date]")) {
+    const selected = day.dataset.date === date;
+    day.setAttribute("aria-pressed", String(selected));
+    day.setAttribute("tabindex", selected ? "0" : "-1");
+  }
+  renderDayDetails(record);
+}
+
+function renderDayDetails(record) {
+  if (!record) {
+    els.dayDetails.innerHTML = '<p>Tap a day or focus the calendar and use the arrow keys to see its details.</p>';
+    return;
+  }
+  const fields = [
+    ["Predicted height", `${record.height_m.toFixed(2)} m (MLLW)`],
+    ["Tide time", formatTime(record.tide_time)],
+    [titleCase(record.daytime), formatTime(record.sun_time)],
+    ["Normalized height", record.normalized_amplitude.toFixed(2)],
+    ["Moon phase", record.moon_phase_name],
+  ];
+  els.dayDetails.innerHTML = `
+    <h2>${escapeHtml(`${record.weekday_name}, ${MONTHS[record.month - 1]} ${record.day}, ${state.data.year}`)}</h2>
+    <p class="details-timezone">Times in ${escapeHtml(state.data.station.timezone)}</p>
+    <dl>${fields.map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`).join("")}</dl>
+  `;
 }
 
 function recordsForSelection() {
@@ -234,12 +341,12 @@ function renderSvg(records, monthName, eventName) {
 
   const width = 740;
   const margin = { top: 86, right: 44, bottom: 78, left: 74 };
-  // Keep calendar rows chronological across the ISO week/year boundary.
+  // ISO week numbers wrap at New Year; retain their calendar order.
   const weeks = [...new Set(records.map((record) => record.week))];
-  const rowHeight = 76;
   const plotWidth = width - margin.left - margin.right;
-  const plotHeight = weeks.length * rowHeight;
-  const height = margin.top + plotHeight + margin.bottom;
+  const height = (margin.top + weeks.length * 76 + margin.bottom) * 1.1;
+  const plotHeight = height - margin.top - margin.bottom;
+  const rowHeight = plotHeight / weeks.length;
   const colWidth = plotWidth / 7;
 
   const weekIndex = new Map(weeks.map((week, index) => [week, index]));
@@ -267,13 +374,14 @@ function renderSvg(records, monthName, eventName) {
     const title = [
       `${record.weekday_name}, ${monthName} ${record.day}`,
       `${eventName}: ${sunTime}`,
-      `Tide: ${tideTime}, ${record.height_m.toFixed(2)} m`,
-      `Amplitude: ${amp.toFixed(2)}`,
+      `Predicted tide: ${tideTime}, ${record.height_m.toFixed(2)} m`,
+      `Normalized height: ${amp.toFixed(2)}`,
       record.moon_phase_name,
     ].join(" | ");
 
     dots.push(`
-      <g>
+      <g class="day-target" data-date="${escapeHtml(record.date)}" role="button" tabindex="${record.date === (state.selectedDate || records[0].date) ? "0" : "-1"}" aria-label="${escapeHtml(title)}" aria-pressed="${record.date === state.selectedDate}" aria-controls="dayDetails">
+        <rect class="day-hit" x="${(x - colWidth / 2 + 3).toFixed(2)}" y="${(y - rowHeight / 2 + 3).toFixed(2)}" width="${(colWidth - 6).toFixed(2)}" height="${rowHeight - 6}" rx="6"></rect>
         <circle class="tide-dot" cx="${x.toFixed(2)}" cy="${(y - 9).toFixed(2)}" r="${radius.toFixed(2)}" fill="${colorForAmplitude(amp)}">
           <title>${escapeHtml(title)}</title>
         </circle>
@@ -284,20 +392,20 @@ function renderSvg(records, monthName, eventName) {
 
   const weekdayLabels = WEEKDAYS.map((label, index) => {
     const x = margin.left + index * colWidth + colWidth / 2;
-    return `<text class="axis-label" x="${x.toFixed(2)}" y="${height - 32}" text-anchor="middle">${label}</text>`;
+    return `<text class="axis-label" x="${x.toFixed(2)}" y="${(margin.top + plotHeight + 24).toFixed(2)}" text-anchor="middle">${label}</text>`;
   }).join("");
 
   const weekLabels = weeks.map((week, index) => {
     const y = margin.top + index * rowHeight + rowHeight / 2 + 5;
-    return `<text class="week-label" x="${margin.left - 22}" y="${y.toFixed(2)}" text-anchor="end">${week}</text>`;
+    return `<text class="week-label" x="${margin.left - 10}" y="${y.toFixed(2)}" text-anchor="end">${week}</text>`;
   }).join("");
 
   els.chart.innerHTML = `
-    <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="img" aria-labelledby="svgTitle svgDesc">
+    <svg class="calendar-svg" viewBox="0 0 ${width} ${height}" role="group" aria-labelledby="svgTitle" aria-describedby="svgDesc">
       <title id="svgTitle">${monthName} ${state.data.year} ${state.daytime} tide calendar</title>
-      <desc id="svgDesc">Calendar grid with one circle per day. Circle size and color encode normalized tide amplitude nearest ${state.daytime}.</desc>
+      <desc id="svgDesc">Calendar grid with one selectable day per date showing predicted tide height nearest ${state.daytime}. Use arrow keys to move by day or week, Home and End for the first and last day, or tap a day for details. Color scales from the annual low to the annual high. Circle size shows distance from their midpoint.</desc>
       <text class="month-title" x="${margin.left}" y="46">${monthName}</text>
-      <text class="axis-label" x="${margin.left}" y="70">${eventName} tide amplitude</text>
+      <text class="axis-label" x="${margin.left}" y="70">Predicted tide height at ${state.daytime}</text>
       ${gridLines.join("")}
       <rect class="plot-border" x="${margin.left}" y="${margin.top}" width="${plotWidth}" height="${plotHeight}"></rect>
       ${weekLabels}

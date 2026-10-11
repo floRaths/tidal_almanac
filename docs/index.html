@@ -12,7 +12,7 @@
         color: #e8ebef;
       }
     </style>
-    <link rel="stylesheet" href="styles.css?v=live-1">
+    <link rel="stylesheet" href="styles.css?v=live-layout-20261010">
   </head>
   <body>
     <main class="app">
@@ -21,33 +21,31 @@
           <p class="eyebrow" id="stationLabel">Santa Monica</p>
           <h1>Tidal Almanac</h1>
         </div>
-        <div class="meta">
-          <span id="yearLabel">2026</span>
-          <span id="eventLabel">Sunset</span>
-        </div>
       </header>
 
       <section class="controls" aria-label="Calendar controls">
-        <label class="field">
+        <label class="field location-field">
           <span>Location</span>
           <select id="stationSelect" name="station" disabled></select>
         </label>
-
-        <label class="field">
+        <label class="field year-field">
           <span>Year</span>
           <input id="yearInput" name="year" type="number" min="1900" max="2100" step="1" required>
         </label>
+
+        <div class="field month-field">
+          <div class="field-heading">
+            <label for="monthSelect">Month</label>
+            <button id="todayButton" class="today-button" type="button">Today</button>
+          </div>
+          <select id="monthSelect" name="month"></select>
+        </div>
 
         <div class="field load-field">
           <button id="loadButton" type="button">Load calendar</button>
         </div>
 
-        <label class="field">
-          <span>Month</span>
-          <select id="monthSelect" name="month"></select>
-        </label>
-
-        <div class="field">
+        <div class="field event-field">
           <span>Event</span>
           <div class="segmented" id="daytimeControl" role="radiogroup" aria-label="Solar event">
             <button type="button" data-daytime="sunset" role="radio" aria-checked="true">Sunset</button>
@@ -55,40 +53,41 @@
           </div>
         </div>
 
-        <div class="stat">
-          <span>Mean tide</span>
+        <div class="stat height-stat">
+          <span>Mean predicted height</span>
           <strong id="meanHeight">--</strong>
         </div>
 
-        <div class="stat">
-          <span>Range</span>
+        <div class="stat range-stat">
+          <span>Normalized range</span>
           <strong id="ampRange">--</strong>
         </div>
       </section>
 
       <p id="loadStatus" class="load-status" role="status" aria-live="polite"></p>
-      <button id="retryButton" class="retry-button" type="button" hidden>Retry</button>
+      <button id="retryButton" class="retry-button" type="button" hidden>Retry loading calendar</button>
 
-      <section class="chart-panel" aria-labelledby="chartTitle">
-        <div class="chart-heading">
-          <div>
-            <h2 id="chartTitle">January at sunset</h2>
-            <p id="chartSubhead">Normalized tide amplitude nearest sunset</p>
-          </div>
-          <div class="legend" aria-label="Amplitude color scale">
+      <section class="chart-panel" aria-label="Predicted tide calendar" aria-describedby="chartExplanation">
+        <div class="chart-frame">
+          <div id="chart"></div>
+        </div>
+
+        <div id="dayDetails" class="day-details" role="status" aria-live="polite" aria-atomic="true">
+          <p>Tap a day or focus the calendar and use the arrow keys to see its details.</p>
+        </div>
+
+        <div class="chart-key">
+          <div class="legend" aria-label="Normalized tide height color scale">
             <span>Low</span>
             <span class="legend-bar" aria-hidden="true"></span>
             <span>High</span>
           </div>
-        </div>
-
-        <div class="chart-frame">
-          <div id="chart" aria-live="polite"></div>
+          <p id="chartExplanation">Heights are NOAA predictions nearest the selected solar event, in meters relative to Mean Lower Low Water (MLLW). Color uses the full year’s tide predictions: −1 is the annual low, 0 the midpoint, and +1 the annual high. Larger circles show heights farther from that midpoint. Negative normalized values do not necessarily mean heights below zero meters.</p>
         </div>
       </section>
     </main>
 
     <script src="config.js?v=live-1"></script>
-    <script src="main.js?v=live-1"></script>
+    <script src="main.js?v=live-layout-20261010"></script>
   </body>
 </html>
